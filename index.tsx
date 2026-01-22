@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, createContext, useContext } from "react";
 import { createRoot } from "react-dom/client";
-import { 
-    Layout, Folder, Layers, Settings, Bell, 
-    Plus, Search, ChevronRight, Clock, 
+import {
+    Layout, Folder, Layers, Settings, Bell,
+    Plus, Search, ChevronRight, Clock,
     CheckCircle2, ArrowLeft, Image as ImageIcon,
     FileText, MessageSquare, Download, Users,
     Grid, Building2, LogOut, CalendarDays,
@@ -11,10 +11,22 @@ import {
     Calendar, AlertCircle, Printer, Smartphone,
     Link as LinkIcon, ChevronDown, PauseCircle,
     PlayCircle, CheckSquare, AlertTriangle,
-    Mail, Shield, Trash2, Edit2, BellRing, 
+    Mail, Shield, Trash2, Edit2, BellRing,
     CreditCard, Globe, Lock, Menu, ChevronLeft,
     Github, Loader2, Filter
 } from "lucide-react";
+
+// Import database functions
+import {
+    getOrganizations,
+    createProject,
+    updateProjectStatus,
+    addProjectActivity,
+    initializeDatabase,
+    type Organization as DBOrganization,
+    type Project as DBProject,
+    type ActivityItem as DBActivityItem
+} from './db';
 
 // --- Types ---
 
@@ -517,7 +529,7 @@ const SettingsPage = () => {
 
 // --- Modals ---
 
-const NewProjectModal = ({ onClose }: { onClose: () => void }) => {
+const NewProjectModal = ({ onClose, orgId }: { onClose: () => void, orgId: string }) => {
     const [projectName, setProjectName] = useState("");
     const [projectType, setProjectType] = useState<string | null>(null);
     const [department, setDepartment] = useState("");
@@ -525,26 +537,43 @@ const NewProjectModal = ({ onClose }: { onClose: () => void }) => {
     const [conceptDate, setConceptDate] = useState("");
     const [finalDate, setFinalDate] = useState("");
     const [description, setDescription] = useState("");
+    const [isLoading, setIsLoading] = useState(false);
 
-    const handleCreateProject = () => {
+    const handleCreateProject = async () => {
         if (!projectName || !projectType || !description) {
             alert("Please fill in all required fields (Project Name, Project Type, and Description)");
             return;
         }
+
+        if (!orgId) {
+            alert("No organization selected");
+            return;
+        }
         
-        // In a real app, this would save to a database
-        console.log("Creating project:", {
-            name: projectName,
-            type: projectType,
-            department,
-            referenceLink,
-            conceptDate,
-            finalDate,
-            description
-        });
+        setIsLoading(true);
         
-        alert(`Project "${projectName}" created successfully!`);
-        onClose();
+        try {
+            const newProject = await createProject(orgId, {
+                title: projectName,
+                type: projectType as any,
+                status: 'ready',
+                createdAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                conceptDueDate: conceptDate || 'TBD',
+                finalDueDate: finalDate || 'TBD',
+                description: description
+            });
+            
+            alert(`Project "${projectName}" created successfully!`);
+            onClose();
+            
+            // Refresh the page to show the new project
+            window.location.reload();
+        } catch (error) {
+            console.error('Error creating project:', error);
+            alert('Failed to create project. Please try again.');
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -1375,8 +1404,11 @@ const Dashboard = ({
 
     return (
         <div className="p-4 md:p-8 animate-fade-in relative">
-            {showNewProjectModal && (
-                <NewProjectModal onClose={() => setShowNewProjectModal(false)} />
+            {showNewProjectModal && activeOrg && (
+                <NewProjectModal
+                    onClose={() => setShowNewProjectModal(false)}
+                    orgId={activeOrg.id}
+                />
             )}
 
             {/* Org Header (only show if not in 'All Projects' view) */}
@@ -1578,6 +1610,51 @@ const AppContent = () => {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+    // Database state
+    const [orgs, setOrgs] = useState<Organization[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    // Fetch organizations from database
+    useEffect(() => {
+        const fetchOrgs = async () => {
+            if (!user) return;
+            
+            try {
+                setIsLoading(true);
+                const dbOrgs = await getOrganizations();
+                
+                // Convert DB organizations to app format
+                const convertedOrgs: Organization[] = dbOrgs.map(org => ({
+                    id: org.id,
+                    name: org.name,
+                    logo: org.logo,
+                    plan: org.plan,
+                    projects: org.projects.map(p => ({
+                        id: p.id,
+                        title: p.title,
+                        type: p.type as any,
+                        status: p.status as any,
+                        createdAt: p.createdAt,
+                        conceptDueDate: p.conceptDueDate,
+                        finalDueDate: p.finalDueDate,
+                        description: p.description,
+                        thumbnail: p.thumbnail,
+                        team: p.team,
+                        activity: p.activity
+                    }))
+                }));
+                
+                setOrgs(convertedOrgs);
+            } catch (error) {
+                console.error('Error fetching organizations:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchOrgs();
+    }, [user]);
+
     // Effect to set initial view based on role
     useEffect(() => {
         if (user) {
@@ -1661,11 +1738,11 @@ const AppContent = () => {
                 ) : view === 'settings' ? (
                     <SettingsPage />
                 ) : (
-                    <Dashboard 
-                        role={user.role} 
-                        orgs={MOCK_ORGS} 
-                        view={view} 
-                        selectOrg={handleSelectOrg} 
+                    <Dashboard
+                        role={user.role}
+                        orgs={orgs}
+                        view={view}
+                        selectOrg={handleSelectOrg}
                         selectProject={handleSelectProject}
                         goBackToOrgs={() => setView('orgs')}
                         user={user}
