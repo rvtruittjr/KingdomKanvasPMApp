@@ -23,9 +23,13 @@ import {
     updateProjectStatus,
     addProjectActivity,
     initializeDatabase,
+    getUserByEmail,
+    createUser,
+    getUserOrganizations,
     type Organization as DBOrganization,
     type Project as DBProject,
-    type ActivityItem as DBActivityItem
+    type ActivityItem as DBActivityItem,
+    type User as DBUser
 } from './db';
 
 // --- Types ---
@@ -108,108 +112,6 @@ const useAuth = () => {
     return context;
 };
 
-// --- Mock Data ---
-
-const MOCK_TEAM_MEMBERS: TeamMember[] = [
-    { id: 'u1', name: 'Alex Johnson', role: 'Project Manager', email: 'alex@kingdomkanvas.com', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex', status: 'active' },
-    { id: 'u2', name: 'Sarah Chen', role: 'Creative Director', email: 'sarah@kingdomkanvas.com', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah', status: 'active' },
-    { id: 'u3', name: 'Mike Ross', role: 'Designer', email: 'mike@kingdomkanvas.com', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mike', status: 'active' },
-    { id: 'u4', name: 'Jessica Day', role: 'Designer', email: 'jess@kingdomkanvas.com', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Jessica', status: 'invited' },
-    { id: 'u5', name: 'Pastor Dave', role: 'Client', email: 'dave@gracecommunity.com', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dave', status: 'active' }
-];
-
-const MOCK_ORGS: Organization[] = [
-    {
-        id: 'org1',
-        name: 'Grace Community',
-        logo: 'https://api.dicebear.com/7.x/initials/svg?seed=GC&backgroundColor=0a0a0a',
-        plan: 'pro',
-        projects: [
-            {
-                id: 'p1',
-                title: 'Summer of Hope',
-                type: 'sermon-series',
-                status: 'in-progress',
-                createdAt: 'May 15',
-                conceptDueDate: 'May 22',
-                finalDueDate: 'June 01',
-                description: 'A 6-week visual series focusing on hope in modern times. Needs cinematic title slides and social squares.',
-                team: MOCK_TEAM_MEMBERS,
-                activity: [
-                    {
-                        id: 'a1',
-                        type: 'message',
-                        userId: 'u5',
-                        userName: 'Pastor Dave',
-                        userAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Dave',
-                        timestamp: '2 hours ago',
-                        content: 'Hey team, just saw the initial concepts. The "Dawn" direction is definitely our favorite. Could we see it with slightly warmer tones?'
-                    },
-                    {
-                        id: 'a2',
-                        type: 'upload',
-                        userId: 'u3',
-                        userName: 'Mike Ross',
-                        userAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mike',
-                        timestamp: '4 hours ago',
-                        content: 'Concept_Sketches_v2.pdf',
-                        file: { name: 'Concept_Sketches_v2.pdf', size: '4.5 MB', type: 'pdf' }
-                    },
-                    {
-                        id: 'a3',
-                        type: 'status',
-                        userId: 'u1',
-                        userName: 'Alex Johnson',
-                        userAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex',
-                        timestamp: 'Yesterday',
-                        content: 'changed status to In Production'
-                    },
-                    {
-                        id: 'a4',
-                        type: 'message',
-                        userId: 'u2',
-                        userName: 'Sarah Chen',
-                        userAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah',
-                        timestamp: 'Yesterday',
-                        content: 'Thanks Dave! We will explore those warmer tones today. Mike is already on it.'
-                    }
-                ]
-            },
-            {
-                id: 'p2',
-                title: 'Easter 2024',
-                type: 'event',
-                status: 'completed',
-                createdAt: 'Feb 20',
-                conceptDueDate: 'March 10',
-                finalDueDate: 'March 31',
-                description: 'Full print and digital package for Easter services.',
-                team: [MOCK_TEAM_MEMBERS[0], MOCK_TEAM_MEMBERS[2], MOCK_TEAM_MEMBERS[4]],
-                activity: []
-            }
-        ]
-    },
-    {
-        id: 'org2',
-        name: 'Elevation City',
-        logo: 'https://api.dicebear.com/7.x/initials/svg?seed=EC&backgroundColor=FACC15',
-        plan: 'standard',
-        projects: [
-            {
-                id: 'p3',
-                title: 'Youth Night Refresh',
-                type: 'branding',
-                status: 'review',
-                createdAt: 'Sep 20',
-                conceptDueDate: 'Oct 01',
-                finalDueDate: 'Oct 15',
-                description: 'Rebranding the Wednesday night youth experience.',
-                team: [MOCK_TEAM_MEMBERS[1], { ...MOCK_TEAM_MEMBERS[4], name: 'Josh Miller' }],
-                activity: []
-            }
-        ]
-    }
-];
 
 // --- Helpers ---
 
@@ -341,6 +243,55 @@ const TeamAvatarGroup = ({ title, members }: { title: string, members: TeamMembe
 // --- Pages ---
 
 const TeamPage = () => {
+    const { user } = useAuth();
+    const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchTeamMembers = async () => {
+            if (!user) return;
+            
+            try {
+                setIsLoading(true);
+                // For now, create a default team member based on the user
+                // In production, you would fetch team members from the database
+                const defaultTeam: TeamMember[] = [
+                    {
+                        id: user.id,
+                        name: user.name,
+                        role: user.role === 'designer' ? 'Designer' : 'Client',
+                        avatar: user.image || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`,
+                        email: user.email,
+                        status: 'active'
+                    }
+                ];
+                setTeamMembers(defaultTeam);
+            } catch (error) {
+                console.error('Error fetching team members:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchTeamMembers();
+    }, [user]);
+
+    if (isLoading) {
+        return (
+            <div className="p-8 animate-fade-in max-w-7xl mx-auto">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+                    <div>
+                        <h1 className="font-display font-bold text-3xl mb-1">Team</h1>
+                        <p className="text-gray-500">Manage your workspace access and roles.</p>
+                    </div>
+                </div>
+                <div className="text-center py-12 text-gray-500">
+                    Loading team members...
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="p-8 animate-fade-in max-w-7xl mx-auto">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
@@ -354,7 +305,7 @@ const TeamPage = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {MOCK_TEAM_MEMBERS.map(member => (
+                {teamMembers.map(member => (
                     <div key={member.id} className="bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-lg transition-all group relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
                              <button className="p-2 bg-gray-50 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-black transition-colors">
@@ -1862,69 +1813,85 @@ const AppContent = () => {
     );
 };
 
-// Mock Auth Provider Wrapper
-const MockAuthProvider = ({ children }: { children?: React.ReactNode }) => {
+// Real Auth Provider with Database
+const AuthProvider = ({ children }: { children?: React.ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
-    // Simulate Auth.js 'signIn'
+    // Initialize database on mount
+    useEffect(() => {
+        const initDB = async () => {
+            try {
+                await initializeDatabase();
+                console.log('Database initialized successfully');
+            } catch (error) {
+                console.error('Failed to initialize database:', error);
+            }
+        };
+        initDB();
+    }, []);
+
+    // Real authentication using database
     const signIn = async (provider: string, email?: string) => {
         setIsLoading(true);
-        // Simulate network delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
         
-        let newUser: User;
-        
-        if (provider === 'google') {
-            // Default Google Mock User (Designer)
-            newUser = {
-                id: 'google-user-1',
-                name: 'Alex Johnson',
-                email: 'alex@kingdomkanvas.com',
-                image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex',
-                role: 'designer'
-            };
-        } else if (provider === 'github') {
-            // Default Github Mock User (Dev/Designer)
-            newUser = {
-                id: 'github-user-1',
-                name: 'Mike Ross',
-                email: 'mike@kingdomkanvas.com',
-                image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mike',
-                role: 'designer'
-            };
-        } else if (provider === 'email' && email) {
-            // Logic to determine role based on email domain
-            if (email.includes('kingdomkanvas')) {
-                newUser = {
-                    id: 'email-user-1',
-                    name: email.split('@')[0],
-                    email: email,
-                    image: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
-                    role: 'designer'
-                };
-            } else {
-                 newUser = {
-                    id: 'email-user-2',
-                    name: 'Partner User', // Default name
-                    email: email,
-                    image: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
-                    role: 'client'
-                };
-            }
-        } else {
-             // Fallback
-             newUser = {
-                id: 'fallback-user',
-                name: 'Guest',
-                email: 'guest@example.com',
-                image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Guest',
-                role: 'client'
-            };
-        }
+        try {
+            let userEmail: string;
+            let userName: string;
+            let userImage: string;
+            let userRole: 'designer' | 'client';
 
-        setUser(newUser);
-        setIsLoading(false);
+            if (provider === 'google') {
+                // In production, you would integrate with Google OAuth
+                // For now, we'll use a default email for testing
+                userEmail = 'designer@kingdomkanvas.com';
+                userName = 'Designer User';
+                userImage = `https://api.dicebear.com/7.x/avataaars/svg?seed=${userEmail}`;
+                userRole = 'designer';
+            } else if (provider === 'github') {
+                userEmail = 'developer@kingdomkanvas.com';
+                userName = 'Developer User';
+                userImage = `https://api.dicebear.com/7.x/avataaars/svg?seed=${userEmail}`;
+                userRole = 'designer';
+            } else if (provider === 'email' && email) {
+                userEmail = email;
+                userName = email.split('@')[0];
+                userImage = `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`;
+                // Determine role based on email domain
+                userRole = email.includes('kingdomkanvas') ? 'designer' : 'client';
+            } else {
+                throw new Error('Invalid authentication provider');
+            }
+
+            // Check if user exists in database
+            let dbUser = await getUserByEmail(userEmail);
+
+            if (!dbUser) {
+                // Create new user in database
+                dbUser = await createUser({
+                    email: userEmail,
+                    name: userName,
+                    image: userImage,
+                    role: userRole
+                });
+            }
+
+            // Convert DB user to app user
+            const appUser: User = {
+                id: dbUser.id,
+                name: dbUser.name,
+                email: dbUser.email,
+                image: dbUser.image || userImage,
+                role: dbUser.role
+            };
+
+            setUser(appUser);
+        } catch (error) {
+            console.error('Authentication error:', error);
+            alert('Failed to authenticate. Please try again.');
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const signOut = async () => {
@@ -1943,9 +1910,9 @@ const MockAuthProvider = ({ children }: { children?: React.ReactNode }) => {
 
 const App = () => {
     return (
-        <MockAuthProvider>
+        <AuthProvider>
             <AppContent />
-        </MockAuthProvider>
+        </AuthProvider>
     );
 }
 

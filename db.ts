@@ -25,6 +25,16 @@ async function sql(strings: TemplateStringsArray, ...values: any[]) {
     return result;
 }
 
+// User interface
+export interface User {
+    id: string;
+    email: string;
+    name: string;
+    image?: string;
+    role: 'designer' | 'client';
+    createdAt: string;
+}
+
 // Project interface
 export interface Project {
     id: string;
@@ -38,6 +48,7 @@ export interface Project {
     department?: string;
     referenceLink?: string;
     thumbnail?: string;
+    tags?: string[];
     team: TeamMember[];
     activity: ActivityItem[];
 }
@@ -82,13 +93,28 @@ export async function initializeDatabase() {
     }
 
     try {
+        // Create users table if it doesn't exist
+        await sql`
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                image TEXT,
+                role TEXT DEFAULT 'client',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `;
+
         // Create organizations table if it doesn't exist
         await sql`
             CREATE TABLE IF NOT EXISTS organizations (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 logo TEXT,
-                plan TEXT DEFAULT 'standard'
+                plan TEXT DEFAULT 'standard',
+                owner_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (owner_id) REFERENCES users (id)
             );
         `;
 
@@ -107,8 +133,22 @@ export async function initializeDatabase() {
                 department TEXT,
                 reference_link TEXT,
                 thumbnail TEXT,
+                tags JSONB,
                 team JSONB,
                 activity JSONB,
+                FOREIGN KEY (organization_id) REFERENCES organizations (id)
+            );
+        `;
+
+        // Create user_organizations junction table for team members
+        await sql`
+            CREATE TABLE IF NOT EXISTS user_organizations (
+                user_id TEXT NOT NULL,
+                organization_id TEXT NOT NULL,
+                role TEXT DEFAULT 'member',
+                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, organization_id),
+                FOREIGN KEY (user_id) REFERENCES users (id),
                 FOREIGN KEY (organization_id) REFERENCES organizations (id)
             );
         `;
@@ -224,8 +264,8 @@ const MOCK_ORGS: Organization[] = [
 // Get all organizations with their projects
 export async function getOrganizations(): Promise<Organization[]> {
     if (!db) {
-        console.log('Database connection not available, returning mock data');
-        return MOCK_ORGS;
+        console.log('Database connection not available');
+        return [];
     }
 
     try {
@@ -237,19 +277,20 @@ export async function getOrganizations(): Promise<Organization[]> {
         const orgs = Array.isArray(orgsResult) ? orgsResult : [];
 
         for (const org of orgs) {
+            const orgId = (org as any).id;
             const projectsResult = await sql`
                 SELECT * FROM projects
-                WHERE organization_id = ${org.id}
+                WHERE organization_id = ${orgId}
                 ORDER BY created_at DESC;
             `;
 
             const projects = Array.isArray(projectsResult) ? projectsResult : [];
 
             organizations.push({
-                id: org.id,
-                name: org.name,
-                logo: org.logo,
-                plan: org.plan,
+                id: orgId,
+                name: (org as any).name,
+                logo: (org as any).logo,
+                plan: (org as any).plan,
                 projects: projects.map((p: any) => ({
                     id: p.id,
                     title: p.title,
@@ -262,6 +303,7 @@ export async function getOrganizations(): Promise<Organization[]> {
                     department: p.department,
                     referenceLink: p.reference_link,
                     thumbnail: p.thumbnail,
+                    tags: p.tags ? JSON.parse(p.tags) : [],
                     team: p.team ? JSON.parse(p.team) : [],
                     activity: p.activity ? JSON.parse(p.activity) : []
                 }))
@@ -271,8 +313,130 @@ export async function getOrganizations(): Promise<Organization[]> {
         return organizations;
     } catch (error) {
         console.error('Error fetching organizations:', error);
-        console.log('Returning mock data as fallback');
-        return MOCK_ORGS;
+        return [];
+    }
+}
+
+// User authentication functions
+export async function getUserByEmail(email: string): Promise<User | null> {
+    if (!db) {
+        return null;
+    }
+
+    try {
+        const result = await sql`
+            SELECT * FROM users WHERE email = ${email};
+        `;
+
+        const user = Array.isArray(result) ? result[0] : result;
+        
+        if (!user) {
+            return null;
+        }
+
+        const userAny = user as any;
+
+        return {
+            id: userAny.id,
+            email: userAny.email,
+            name: userAny.name,
+            image: userAny.image,
+            role: userAny.role === 'designer' ? 'designer' : 'client',
+            createdAt: userAny.created_at
+        };
+    } catch (error) {
+        console.error('Error fetching user:', error);
+        return null;
+    }
+}
+
+export async function createUser(userData: {
+    email: string;
+    name: string;
+    image?: string;
+    role?: 'designer' | 'client';
+}): Promise<User> {
+    if (!db) {
+        throw new Error('Database connection not available');
+    }
+
+    try {
+        const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const role = userData.role || 'client';
+
+        await sql`
+            INSERT INTO users (id, email, name, image, role)
+            VALUES (${userId}, ${userData.email}, ${userData.name}, ${userData.image}, ${role});
+        `;
+
+        return {
+            id: userId,
+            email: userData.email,
+            name: userData.name,
+            image: userData.image,
+            role: role,
+            createdAt: new Date().toISOString()
+        };
+    } catch (error) {
+        console.error('Error creating user:', error);
+        throw error;
+    }
+}
+
+export async function getUserOrganizations(userId: string): Promise<Organization[]> {
+    if (!db) {
+        return [];
+    }
+
+    try {
+        const orgsResult = await sql`
+            SELECT o.* FROM organizations o
+            JOIN user_organizations uo ON o.id = uo.organization_id
+            WHERE uo.user_id = ${userId}
+            ORDER BY o.name;
+        `;
+
+        const organizations: Organization[] = [];
+        const orgs = Array.isArray(orgsResult) ? orgsResult : [];
+
+        for (const org of orgs) {
+            const orgId = (org as any).id;
+            const projectsResult = await sql`
+                SELECT * FROM projects
+                WHERE organization_id = ${orgId}
+                ORDER BY created_at DESC;
+            `;
+
+            const projects = Array.isArray(projectsResult) ? projectsResult : [];
+
+            organizations.push({
+                id: orgId,
+                name: (org as any).name,
+                logo: (org as any).logo,
+                plan: (org as any).plan,
+                projects: projects.map((p: any) => ({
+                    id: p.id,
+                    title: p.title,
+                    type: p.type,
+                    status: p.status,
+                    createdAt: p.created_at,
+                    conceptDueDate: p.concept_due_date,
+                    finalDueDate: p.final_due_date,
+                    description: p.description,
+                    department: p.department,
+                    referenceLink: p.reference_link,
+                    thumbnail: p.thumbnail,
+                    tags: p.tags ? JSON.parse(p.tags) : [],
+                    team: p.team ? JSON.parse(p.team) : [],
+                    activity: p.activity ? JSON.parse(p.activity) : []
+                }))
+            });
+        }
+
+        return organizations;
+    } catch (error) {
+        console.error('Error fetching user organizations:', error);
+        return [];
     }
 }
 
@@ -307,14 +471,14 @@ export async function createProject(
             INSERT INTO projects (
                 id, organization_id, title, type, status,
                 created_at, concept_due_date, final_due_date,
-                description, department, reference_link, team, activity
+                description, department, reference_link, tags, team, activity
             ) VALUES (
                 ${projectId}, ${organizationId}, ${newProject.title},
                 ${newProject.type}, ${newProject.status},
                 ${newProject.createdAt}, ${newProject.conceptDueDate},
                 ${newProject.finalDueDate}, ${newProject.description},
                 ${newProject.department}, ${newProject.referenceLink},
-                ${JSON.stringify(newProject.team)}, ${JSON.stringify(newProject.activity)}
+                ${JSON.stringify(newProject.tags)}, ${JSON.stringify(newProject.team)}, ${JSON.stringify(newProject.activity)}
             );
         `;
 
