@@ -13,8 +13,8 @@
     }
   ],
   "env": {
-    "POSTGRES_URL": "@postgres-url",
-    "POSTGRES_URL_NON_POOLING": "@postgres-url-non-pooling",
-    "GEMINI_API_KEY": "@gemini-api-key"
+    "POSTGRES_URL": "${POSTGRES_URL}",
+    "POSTGRES_URL_NON_POOLING": "${POSTGRES_URL_NON_POOLING}",
+    "GEMINI_API_KEY": "${GEMINI_API_KEY}"
   }
 }
