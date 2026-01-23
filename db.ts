@@ -35,6 +35,8 @@ export interface Project {
     conceptDueDate: string;
     finalDueDate: string;
     description: string;
+    department?: string;
+    referenceLink?: string;
     thumbnail?: string;
     team: TeamMember[];
     activity: ActivityItem[];
@@ -102,6 +104,8 @@ export async function initializeDatabase() {
                 concept_due_date TEXT NOT NULL,
                 final_due_date TEXT NOT NULL,
                 description TEXT NOT NULL,
+                department TEXT,
+                reference_link TEXT,
                 thumbnail TEXT,
                 team JSONB,
                 activity JSONB,
@@ -255,6 +259,8 @@ export async function getOrganizations(): Promise<Organization[]> {
                     conceptDueDate: p.concept_due_date,
                     finalDueDate: p.final_due_date,
                     description: p.description,
+                    department: p.department,
+                    referenceLink: p.reference_link,
                     thumbnail: p.thumbnail,
                     team: p.team ? JSON.parse(p.team) : [],
                     activity: p.activity ? JSON.parse(p.activity) : []
@@ -299,14 +305,15 @@ export async function createProject(
 
         await sql`
             INSERT INTO projects (
-                id, organization_id, title, type, status, 
-                created_at, concept_due_date, final_due_date, 
-                description, team, activity
+                id, organization_id, title, type, status,
+                created_at, concept_due_date, final_due_date,
+                description, department, reference_link, team, activity
             ) VALUES (
-                ${projectId}, ${organizationId}, ${newProject.title}, 
-                ${newProject.type}, ${newProject.status}, 
-                ${newProject.createdAt}, ${newProject.conceptDueDate}, 
-                ${newProject.finalDueDate}, ${newProject.description}, 
+                ${projectId}, ${organizationId}, ${newProject.title},
+                ${newProject.type}, ${newProject.status},
+                ${newProject.createdAt}, ${newProject.conceptDueDate},
+                ${newProject.finalDueDate}, ${newProject.description},
+                ${newProject.department}, ${newProject.referenceLink},
                 ${JSON.stringify(newProject.team)}, ${JSON.stringify(newProject.activity)}
             );
         `;

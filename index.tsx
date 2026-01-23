@@ -77,6 +77,8 @@ interface Project {
     finalDueDate: string;
     thumbnail?: string;
     description: string;
+    department?: string;
+    referenceLink?: string;
     team: TeamMember[];
     activity: ActivityItem[];
 }
@@ -560,7 +562,9 @@ const NewProjectModal = ({ onClose, orgId, onProjectCreated }: { onClose: () => 
                 createdAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
                 conceptDueDate: conceptDate || 'TBD',
                 finalDueDate: finalDate || 'TBD',
-                description: description
+                description: description,
+                department: department,
+                referenceLink: referenceLink
             });
             
             alert(`Project "${projectName}" created successfully!`);
@@ -1428,6 +1432,8 @@ const Dashboard = ({
                                         conceptDueDate: newProject.conceptDueDate,
                                         finalDueDate: newProject.finalDueDate,
                                         description: newProject.description,
+                                        department: newProject.department,
+                                        referenceLink: newProject.referenceLink,
                                         thumbnail: newProject.thumbnail,
                                         team: newProject.team || [],
                                         activity: newProject.activity || []
