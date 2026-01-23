@@ -213,6 +213,25 @@ const MOCK_ORGS: Organization[] = [
 
 // --- Helpers ---
 
+const formatDate = (dateStr: string) => {
+    // Handle "TBD" or empty dates
+    if (!dateStr || dateStr === 'TBD') return 'TBD';
+    
+    // Try to parse the date
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) {
+        // If it's already in a good format, return as is
+        return dateStr;
+    }
+    
+    // Format as "Month Day, Year" (e.g., "Jan 23, 26")
+    const month = date.toLocaleDateString('en-US', { month: 'short' });
+    const day = date.getDate();
+    const year = date.getFullYear().toString().slice(-2);
+    
+    return `${month} ${day}, ${year}`;
+};
+
 const getStatusInfo = (status: ProjectStatus) => {
     switch (status) {
         case 'ready':
@@ -1053,28 +1072,28 @@ const ProjectDetail = ({ project: initialProject, role, onBack }: { project: Pro
                     <div className="flex-shrink-0 w-full xl:w-auto">
                          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Timeline</h4>
                          <div className="grid grid-cols-3 gap-4 w-full">
-                            <div className="flex flex-col gap-1">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Started</span>
-                                <div className="flex items-center gap-2">
-                                    <CalendarDays size={18} className="text-gray-400" />
-                                    <p className="font-medium text-black text-sm sm:text-base">{initialProject.createdAt}</p>
-                                </div>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">First Concept</span>
-                                <div className="flex items-center gap-2">
-                                    <Clock size={18} className="text-yellow-600" />
-                                    <p className="font-medium text-black text-sm sm:text-base">{initialProject.conceptDueDate}</p>
-                                </div>
-                            </div>
-                            <div className="flex flex-col gap-1">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Final Delivery</span>
-                                <div className="flex items-center gap-2">
-                                    <CheckCircle2 size={18} className="text-black" />
-                                    <p className="font-medium text-black text-sm sm:text-base">{initialProject.finalDueDate}</p>
-                                </div>
-                            </div>
-                        </div>
+                             <div className="flex flex-col gap-1">
+                                 <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Started</span>
+                                 <div className="flex items-center gap-2">
+                                     <CalendarDays size={18} className="text-gray-400" />
+                                     <p className="font-medium text-black text-sm sm:text-base">{formatDate(initialProject.createdAt)}</p>
+                                 </div>
+                             </div>
+                             <div className="flex flex-col gap-1">
+                                 <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">First Concept</span>
+                                 <div className="flex items-center gap-2">
+                                     <Clock size={18} className="text-yellow-600" />
+                                     <p className="font-medium text-black text-sm sm:text-base">{formatDate(initialProject.conceptDueDate)}</p>
+                                 </div>
+                             </div>
+                             <div className="flex flex-col gap-1">
+                                 <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Final Delivery</span>
+                                 <div className="flex items-center gap-2">
+                                     <CheckCircle2 size={18} className="text-black" />
+                                     <p className="font-medium text-black text-sm sm:text-base">{formatDate(initialProject.finalDueDate)}</p>
+                                 </div>
+                             </div>
+                         </div>
                     </div>
 
                     <div className="hidden xl:block w-px bg-gray-200 self-stretch"></div>
@@ -1116,6 +1135,57 @@ const ProjectDetail = ({ project: initialProject, role, onBack }: { project: Pro
 
             {/* Content Area */}
             <div className="flex-1 p-4 md:p-8 bg-kingdom-gray overflow-y-auto relative">
+
+                {activeTab === 'brief' && (
+                    <div className="max-w-4xl h-full flex flex-col mr-auto">
+                        <div className="bg-white rounded-2xl border border-gray-200 p-6 md:p-8">
+                            <div className="flex items-center gap-3 mb-6">
+                                <FileText size={20} className="text-gray-400" />
+                                <h2 className="font-display font-bold text-2xl">Project Brief</h2>
+                            </div>
+                            
+                            {initialProject.description ? (
+                                <div className="prose max-w-none">
+                                    <p className="text-gray-700 leading-relaxed text-sm md:text-base whitespace-pre-wrap">
+                                        {initialProject.description}
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="text-center py-12 text-gray-400">
+                                    <FileText size={48} className="mx-auto mb-4 opacity-20" />
+                                    <p>No brief/description provided yet.</p>
+                                </div>
+                            )}
+
+                            {initialProject.department && (
+                                <div className="mt-8 pt-6 border-t border-gray-100">
+                                    <div className="flex items-center gap-3">
+                                        <Building2 size={16} className="text-gray-400" />
+                                        <span className="text-sm font-bold text-gray-400 uppercase tracking-wider">Department</span>
+                                        <span className="text-sm font-medium text-gray-700 capitalize">{initialProject.department}</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {initialProject.referenceLink && (
+                                <div className="mt-4 pt-4 border-t border-gray-100">
+                                    <div className="flex items-center gap-3">
+                                        <LinkIcon size={16} className="text-gray-400" />
+                                        <span className="text-sm font-bold text-gray-400 uppercase tracking-wider">Reference Link</span>
+                                        <a
+                                            href={initialProject.referenceLink}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-sm font-medium text-blue-600 hover:underline truncate"
+                                        >
+                                            {initialProject.referenceLink}
+                                        </a>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {activeTab === 'activity' && (
                     <div className="max-w-4xl h-full flex flex-col mr-auto">
@@ -1674,6 +1744,8 @@ const AppContent = () => {
                         conceptDueDate: p.conceptDueDate,
                         finalDueDate: p.finalDueDate,
                         description: p.description,
+                        department: p.department,
+                        referenceLink: p.referenceLink,
                         thumbnail: p.thumbnail,
                         team: p.team,
                         activity: p.activity
