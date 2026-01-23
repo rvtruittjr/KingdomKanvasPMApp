@@ -2,17 +2,38 @@ import { neon } from '@neondatabase/serverless';
 
 // Create Neon client
 let db: ReturnType<typeof neon> | null = null;
+let useMockData = false;
+let dbInitialized = false;
 
-try {
-    const connectionString = process.env.POSTGRES_URL || process.env.POSTGRES_URL_NON_POOLING;
-    if (connectionString) {
-        db = neon(connectionString);
-    } else {
-        console.log('No database connection string found');
+// Initialize database connection
+async function initializeDbConnection(): Promise<void> {
+    if (dbInitialized) return;
+    
+    try {
+        const connectionString = process.env.POSTGRES_URL || process.env.POSTGRES_URL_NON_POOLING;
+        if (connectionString) {
+            db = neon(connectionString);
+            console.log('Database connection established');
+            
+            // Test the connection
+            try {
+                const testResult = await db`SELECT 1`;
+                console.log('Database connection verified:', testResult);
+            } catch (testError) {
+                console.error('Database connection test failed:', testError);
+                useMockData = true;
+            }
+        } else {
+            console.log('No database connection string found, using mock data');
+            useMockData = true;
+        }
+    } catch (error) {
+        console.error('Failed to create Neon client:', error);
+        console.log('Falling back to mock data');
+        useMockData = true;
     }
-} catch (error) {
-    console.error('Failed to create Neon client:', error);
-    db = null;
+    
+    dbInitialized = true;
 }
 
 // Helper function to execute SQL queries
@@ -20,143 +41,8 @@ async function sql(strings: TemplateStringsArray, ...values: any[]) {
     if (!db) {
         throw new Error('Database connection not available');
     }
-    const query = strings[0];
-    const result = await db(query, ...values);
+    const result = await db(strings, ...values);
     return result;
-}
-
-// User interface
-export interface User {
-    id: string;
-    email: string;
-    name: string;
-    image?: string;
-    role: 'designer' | 'client';
-    createdAt: string;
-}
-
-// Project interface
-export interface Project {
-    id: string;
-    title: string;
-    type: 'sermon-series' | 'event' | 'branding' | 'social-media' | 'print' | 'other';
-    status: 'ready' | 'in-progress' | 'on-hold' | 'review' | 'completed';
-    createdAt: string;
-    conceptDueDate: string;
-    finalDueDate: string;
-    description: string;
-    department?: string;
-    referenceLink?: string;
-    thumbnail?: string;
-    tags?: string[];
-    team: TeamMember[];
-    activity: ActivityItem[];
-}
-
-export interface TeamMember {
-    id: string;
-    name: string;
-    role: 'Project Manager' | 'Creative Director' | 'Designer' | 'Client';
-    avatar: string;
-    email: string;
-    status: 'active' | 'invited';
-}
-
-export interface ActivityItem {
-    id: string;
-    type: 'message' | 'upload' | 'status';
-    userId: string;
-    userName: string;
-    userAvatar: string;
-    timestamp: string;
-    content: string;
-    file?: {
-        name: string;
-        size: string;
-        type: string;
-    };
-}
-
-export interface Organization {
-    id: string;
-    name: string;
-    logo: string;
-    plan: 'standard' | 'pro';
-    projects: Project[];
-}
-
-// Initialize database tables
-export async function initializeDatabase() {
-    if (!db) {
-        console.log('Database connection not available, skipping initialization');
-        return;
-    }
-
-    try {
-        // Create users table if it doesn't exist
-        await sql`
-            CREATE TABLE IF NOT EXISTS users (
-                id TEXT PRIMARY KEY,
-                email TEXT UNIQUE NOT NULL,
-                name TEXT NOT NULL,
-                image TEXT,
-                role TEXT DEFAULT 'client',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        `;
-
-        // Create organizations table if it doesn't exist
-        await sql`
-            CREATE TABLE IF NOT EXISTS organizations (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                logo TEXT,
-                plan TEXT DEFAULT 'standard',
-                owner_id TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (owner_id) REFERENCES users (id)
-            );
-        `;
-
-        // Create projects table if it doesn't exist
-        await sql`
-            CREATE TABLE IF NOT EXISTS projects (
-                id TEXT PRIMARY KEY,
-                organization_id TEXT NOT NULL,
-                title TEXT NOT NULL,
-                type TEXT NOT NULL,
-                status TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                concept_due_date TEXT NOT NULL,
-                final_due_date TEXT NOT NULL,
-                description TEXT NOT NULL,
-                department TEXT,
-                reference_link TEXT,
-                thumbnail TEXT,
-                tags JSONB,
-                team JSONB,
-                activity JSONB,
-                FOREIGN KEY (organization_id) REFERENCES organizations (id)
-            );
-        `;
-
-        // Create user_organizations junction table for team members
-        await sql`
-            CREATE TABLE IF NOT EXISTS user_organizations (
-                user_id TEXT NOT NULL,
-                organization_id TEXT NOT NULL,
-                role TEXT DEFAULT 'member',
-                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (user_id, organization_id),
-                FOREIGN KEY (user_id) REFERENCES users (id),
-                FOREIGN KEY (organization_id) REFERENCES organizations (id)
-            );
-        `;
-
-        console.log('Database tables initialized successfully');
-    } catch (error) {
-        console.error('Error initializing database:', error);
-    }
 }
 
 // Mock data for when database connection fails
@@ -261,11 +147,153 @@ const MOCK_ORGS: Organization[] = [
     }
 ];
 
+// User interface
+export interface User {
+    id: string;
+    email: string;
+    name: string;
+    image?: string;
+    role: 'designer' | 'client';
+    createdAt: string;
+}
+
+// Project interface
+export interface Project {
+    id: string;
+    title: string;
+    type: 'sermon-series' | 'event' | 'branding' | 'social-media' | 'print' | 'other';
+    status: 'ready' | 'in-progress' | 'on-hold' | 'review' | 'completed';
+    createdAt: string;
+    conceptDueDate: string;
+    finalDueDate: string;
+    description: string;
+    department?: string;
+    referenceLink?: string;
+    thumbnail?: string;
+    tags?: string[];
+    team: TeamMember[];
+    activity: ActivityItem[];
+}
+
+export interface TeamMember {
+    id: string;
+    name: string;
+    role: 'Project Manager' | 'Creative Director' | 'Designer' | 'Client';
+    avatar: string;
+    email: string;
+    status: 'active' | 'invited';
+}
+
+export interface ActivityItem {
+    id: string;
+    type: 'message' | 'upload' | 'status';
+    userId: string;
+    userName: string;
+    userAvatar: string;
+    timestamp: string;
+    content: string;
+    file?: {
+        name: string;
+        size: string;
+        type: string;
+    };
+}
+
+export interface Organization {
+    id: string;
+    name: string;
+    logo: string;
+    plan: 'standard' | 'pro';
+    projects: Project[];
+}
+
+// Initialize database tables
+export async function initializeDatabase() {
+    await initializeDbConnection();
+    
+    if (!db) {
+        console.log('Database connection not available, skipping initialization');
+        return;
+    }
+
+    try {
+        // Create users table if it doesn't exist
+        await sql`
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                image TEXT,
+                role TEXT DEFAULT 'client',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `;
+
+        // Create organizations table if it doesn't exist
+        await sql`
+            CREATE TABLE IF NOT EXISTS organizations (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                logo TEXT,
+                plan TEXT DEFAULT 'standard',
+                owner_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (owner_id) REFERENCES users (id)
+            );
+        `;
+
+        // Create projects table if it doesn't exist
+        await sql`
+            CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY,
+                organization_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                type TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                concept_due_date TEXT NOT NULL,
+                final_due_date TEXT NOT NULL,
+                description TEXT NOT NULL,
+                department TEXT,
+                reference_link TEXT,
+                thumbnail TEXT,
+                tags JSONB,
+                team JSONB,
+                activity JSONB,
+                FOREIGN KEY (organization_id) REFERENCES organizations (id)
+            );
+        `;
+
+        // Create user_organizations junction table for team members
+        await sql`
+            CREATE TABLE IF NOT EXISTS user_organizations (
+                user_id TEXT NOT NULL,
+                organization_id TEXT NOT NULL,
+                role TEXT DEFAULT 'member',
+                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (user_id, organization_id),
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                FOREIGN KEY (organization_id) REFERENCES organizations (id)
+            );
+        `;
+
+        console.log('Database tables initialized successfully');
+    } catch (error) {
+        console.error('Error initializing database:', error);
+    }
+}
+
+// Export initializeDbConnection for use in authentication
+export { initializeDbConnection };
+
+
 // Get all organizations with their projects
 export async function getOrganizations(): Promise<Organization[]> {
-    if (!db) {
-        console.log('Database connection not available');
-        return [];
+    await initializeDbConnection();
+    
+    if (!db || useMockData) {
+        console.log('Database connection not available, returning mock data');
+        return MOCK_ORGS;
     }
 
     try {
@@ -313,13 +341,16 @@ export async function getOrganizations(): Promise<Organization[]> {
         return organizations;
     } catch (error) {
         console.error('Error fetching organizations:', error);
-        return [];
+        return MOCK_ORGS;
     }
 }
 
 // User authentication functions
 export async function getUserByEmail(email: string): Promise<User | null> {
-    if (!db) {
+    await initializeDbConnection();
+    
+    if (!db || useMockData) {
+        console.log('Database connection not available, returning null for user lookup');
         return null;
     }
 
@@ -356,8 +387,10 @@ export async function createUser(userData: {
     image?: string;
     role?: 'designer' | 'client';
 }): Promise<User> {
-    if (!db) {
-        throw new Error('Database connection not available');
+    await initializeDbConnection();
+    
+    if (!db || useMockData) {
+        throw new Error('Database connection not available - cannot create user');
     }
 
     try {
@@ -384,8 +417,11 @@ export async function createUser(userData: {
 }
 
 export async function getUserOrganizations(userId: string): Promise<Organization[]> {
-    if (!db) {
-        return [];
+    await initializeDbConnection();
+    
+    if (!db || useMockData) {
+        console.log('Database connection not available, returning mock data');
+        return MOCK_ORGS;
     }
 
     try {
@@ -436,7 +472,7 @@ export async function getUserOrganizations(userId: string): Promise<Organization
         return organizations;
     } catch (error) {
         console.error('Error fetching user organizations:', error);
-        return [];
+        return MOCK_ORGS;
     }
 }
 
@@ -445,7 +481,9 @@ export async function createProject(
     organizationId: string,
     projectData: Omit<Project, 'id' | 'team' | 'activity'>
 ): Promise<Project> {
-    if (!db) {
+    await initializeDbConnection();
+    
+    if (!db || useMockData) {
         console.log('Database connection not available, returning mock project');
         const projectId = `proj_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
@@ -494,7 +532,9 @@ export async function updateProjectStatus(
     projectId: string,
     newStatus: string
 ): Promise<void> {
-    if (!db) {
+    await initializeDbConnection();
+    
+    if (!db || useMockData) {
         console.log('Database connection not available, skipping status update');
         return;
     }
@@ -516,7 +556,9 @@ export async function addProjectActivity(
     projectId: string,
     activity: ActivityItem
 ): Promise<void> {
-    if (!db) {
+    await initializeDbConnection();
+    
+    if (!db || useMockData) {
         console.log('Database connection not available, skipping activity update');
         return;
     }
@@ -548,7 +590,9 @@ export async function createOrganization(
     logo: string,
     plan: 'standard' | 'pro' = 'standard'
 ): Promise<Organization> {
-    if (!db) {
+    await initializeDbConnection();
+    
+    if (!db || useMockData) {
         console.log('Database connection not available, returning mock organization');
         const orgId = `org_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
@@ -565,7 +609,7 @@ export async function createOrganization(
         const orgId = `org_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         await sql`
-            INSERT INTO organizations (id, name, logo, plan) 
+            INSERT INTO organizations (id, name, logo, plan)
             VALUES (${orgId}, ${name}, ${logo}, ${plan});
         `;
 

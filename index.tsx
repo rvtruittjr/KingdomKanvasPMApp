@@ -23,6 +23,7 @@ import {
     updateProjectStatus,
     addProjectActivity,
     initializeDatabase,
+    initializeDbConnection,
     getUserByEmail,
     createUser,
     getUserOrganizations,
@@ -1836,6 +1837,9 @@ const AuthProvider = ({ children }: { children?: React.ReactNode }) => {
         setIsLoading(true);
         
         try {
+            // Ensure database connection is established before authentication
+            await initializeDbConnection();
+            
             let userEmail: string;
             let userName: string;
             let userImage: string;
