@@ -529,7 +529,7 @@ const SettingsPage = () => {
 
 // --- Modals ---
 
-const NewProjectModal = ({ onClose, orgId }: { onClose: () => void, orgId: string }) => {
+const NewProjectModal = ({ onClose, orgId, onProjectCreated }: { onClose: () => void, orgId: string, onProjectCreated?: (newProject: any) => void }) => {
     const [projectName, setProjectName] = useState("");
     const [projectType, setProjectType] = useState<string | null>(null);
     const [department, setDepartment] = useState("");
@@ -564,10 +564,13 @@ const NewProjectModal = ({ onClose, orgId }: { onClose: () => void, orgId: strin
             });
             
             alert(`Project "${projectName}" created successfully!`);
-            onClose();
             
-            // Refresh the page to show the new project
-            window.location.reload();
+            // Call the callback to update parent state instead of reloading
+            if (onProjectCreated) {
+                onProjectCreated(newProject);
+            }
+            
+            onClose();
         } catch (error) {
             console.error('Error creating project:', error);
             alert('Failed to create project. Please try again.');
@@ -1282,19 +1285,21 @@ const ProjectDetail = ({ project: initialProject, role, onBack }: { project: Pro
     );
 };
 
-const Dashboard = ({ 
-    role, 
-    orgs, 
-    view, 
-    selectOrg, 
+const Dashboard = ({
+    role,
+    orgs,
+    setOrgs,
+    view,
+    selectOrg,
     selectProject,
     goBackToOrgs,
     user
-}: { 
-    role: Role, 
-    orgs: Organization[], 
-    view: string, 
-    selectOrg: (id: string) => void, 
+}: {
+    role: Role,
+    orgs: Organization[],
+    setOrgs: (orgs: Organization[]) => void,
+    view: string,
+    selectOrg: (id: string) => void,
     selectProject: (p: Project) => void,
     goBackToOrgs: () => void,
     user: User | null
@@ -1408,6 +1413,31 @@ const Dashboard = ({
                 <NewProjectModal
                     onClose={() => setShowNewProjectModal(false)}
                     orgId={activeOrg.id}
+                    onProjectCreated={(newProject) => {
+                        // Update the orgs state to include the new project
+                        const updatedOrgs = orgs.map(org => {
+                            if (org.id === activeOrg.id) {
+                                return {
+                                    ...org,
+                                    projects: [...org.projects, {
+                                        id: newProject.id,
+                                        title: newProject.title,
+                                        type: newProject.type,
+                                        status: newProject.status,
+                                        createdAt: newProject.createdAt,
+                                        conceptDueDate: newProject.conceptDueDate,
+                                        finalDueDate: newProject.finalDueDate,
+                                        description: newProject.description,
+                                        thumbnail: newProject.thumbnail,
+                                        team: newProject.team || [],
+                                        activity: newProject.activity || []
+                                    }]
+                                };
+                            }
+                            return org;
+                        });
+                        setOrgs(updatedOrgs);
+                    }}
                 />
             )}
 
@@ -1741,6 +1771,7 @@ const AppContent = () => {
                     <Dashboard
                         role={user.role}
                         orgs={orgs}
+                        setOrgs={setOrgs}
                         view={view}
                         selectOrg={handleSelectOrg}
                         selectProject={handleSelectProject}
